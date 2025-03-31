@@ -10,6 +10,7 @@
   import { fileToImageData, downloadBlob, downloadSvg } from '../utils/fileHandlers';
   import { detectEdges, convertToPngBlob, resizeImage, extractLinesWithProgress, binarizeWithOtsu, extractEdgesFromBinary } from '../utils/imageProcessing';
   import { convertToSvg } from '../utils/svgConverter';
+  import ImageEditor from './ImageEditor.svelte';
   
   let threshold = 20;
   let invert = false;
@@ -29,6 +30,9 @@
   
   // エッジの太さ
   let edgeThickness = 1;
+  
+  // 編集モード
+  let editMode = false;
   
   // ストアからの値を購読
   $: originalImage = $imageStore.originalImage;
@@ -150,6 +154,24 @@
       imageStore.setProcessing(false);
     }
   }
+  
+  // 編集モードの切り替え
+  function toggleEditMode() {
+    editMode = !editMode;
+  }
+  
+  // 編集結果を適用（デバッグログ追加）
+  function applyEdits(event: CustomEvent<ImageData>) {
+    console.log('編集適用:', event.detail);
+    const editedImageData = event.detail;
+    imageStore.setProcessedImage(editedImageData);
+    editMode = false;
+  }
+  
+  // 編集をキャンセル
+  function cancelEdits() {
+    editMode = false;
+  }
 </script>
 
 <div class="processor-container">
@@ -181,10 +203,26 @@
         </div>
         
         <div class="preview-item">
-          <ImagePreview 
-            imageData={processedImage} 
-            label="処理後の画像" 
-          />
+          {#if editMode && processedImage}
+            <ImageEditor 
+              imageData={processedImage}
+              color={invert ? 'black' : 'white'}
+              on:apply={applyEdits}
+              on:cancel={cancelEdits}
+            />
+          {:else}
+            <div class="preview-with-actions">
+              <ImagePreview 
+                imageData={processedImage} 
+                label="処理後の画像" 
+              />
+              {#if processedImage}
+                <button class="edit-button" on:click={toggleEditMode}>
+                  ノイズを手動修正
+                </button>
+              {/if}
+            </div>
+          {/if}
         </div>
       </div>
       
@@ -279,5 +317,28 @@
     .preview-grid, .controls-grid {
       grid-template-columns: 1fr;
     }
+  }
+  
+  .preview-with-actions {
+    position: relative;
+    height: 100%;
+  }
+  
+  .edit-button {
+    position: absolute;
+    bottom: 0.5rem;
+    right: 0.5rem;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: none;
+    border-radius: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .edit-button:hover {
+    background-color: rgba(0, 0, 0, 0.9);
   }
 </style> 
