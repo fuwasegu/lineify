@@ -1,38 +1,92 @@
-# sv
+# 画像二値化・エッジ抽出ツール
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+## 概要
 
-## Creating a project
+このアプリケーションは、画像を二値化し、必要に応じてエッジを抽出するためのウェブベースのツールです。大津の二値化アルゴリズムを使用して自動的に最適な閾値を決定し、高品質な二値化画像を生成します。また、二値化した画像からエッジのみを抽出する機能も備えています。
 
-If you're seeing this, you've probably already done this step. Congrats!
+## 主な機能
+
+### 画像処理
+
+- **画像のアップロード**: ドラッグ＆ドロップまたはクリックして画像をアップロード
+- **自動二値化**: 大津の二値化アルゴリズムによる最適な閾値の自動決定
+- **ノイズ除去**: メディアンフィルタなどを使用した効果的なノイズ除去
+- **エッジ抽出**: 二値化画像から輪郭（エッジ）のみを抽出
+- **白黒反転**: 処理結果の白黒を反転
+
+### 画像管理
+
+- **大きな画像のリサイズ**: 処理速度向上のための自動リサイズ機能
+- **リアルタイムプレビュー**: 元画像と処理後の画像を並べて表示
+- **処理進捗表示**: 処理の進行状況をプログレスバーで表示
+
+### エクスポート
+
+- **PNG形式でエクスポート**: 処理結果をPNG形式で保存
+- **SVG形式でエクスポート**: 処理結果をSVG形式に変換して保存
+- **SVG単純化**: SVG変換時の詳細度を調整可能
+
+## 技術仕様
+
+- **フレームワーク**: Svelte + TypeScript
+- **ビルドツール**: Vite
+- **画像処理アルゴリズム**:
+  - 大津の二値化アルゴリズム（自動閾値決定）
+  - メディアンフィルタ（ノイズ除去）
+  - 輪郭抽出アルゴリズム（エッジ検出）
+  - ガウシアンブラー（前処理）
+- **非同期処理**: Promiseベースの処理とプログレス報告
+- **レスポンシブデザイン**: モバイルデバイスにも対応
+
+## 使い方
+
+1. 画像をドラッグ＆ドロップするか、クリックしてアップロード
+2. 必要に応じて処理オプションを調整:
+   - 白黒反転の有効/無効
+   - エッジのみを抽出の有効/無効
+   - 大きな画像のリサイズの有効/無効と最大サイズ
+   - SVG単純化レベルの調整
+3. 「画像を処理」ボタンをクリックして処理を実行
+4. 処理結果を確認し、必要に応じてPNGまたはSVG形式でエクスポート
+
+## インストールと実行
 
 ```bash
-# create a new project in the current directory
-npx sv create
+# 依存関係のインストール
+npm install
 
-# create a new project in my-app
-npx sv create my-app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```bash
+# 開発サーバーの起動
 npm run dev
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```bash
+# ビルド
 npm run build
+
+# ビルド結果のプレビュー
+npm run preview
 ```
 
-You can preview the production build with `npm run preview`.
+## 実装の詳細
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+### 画像処理アルゴリズム
+
+#### 大津の二値化アルゴリズム
+画像のヒストグラムを分析し、クラス間分散を最大化する閾値を自動的に決定します。これにより、画像の特性に応じた最適な二値化が可能になります。
+
+#### ノイズ除去
+メディアンフィルタを使用して、二値化後の画像からノイズを除去します。このフィルタは、各ピクセルの周囲の値の中央値を取ることで、孤立したノイズを効果的に除去します。
+
+#### エッジ抽出
+二値化された画像から、黒ピクセルの周囲に白ピクセルがある場合にそのピクセルを輪郭として抽出します。これにより、オブジェクトの輪郭のみを取り出すことができます。
+
+### コンポーネント構成
+
+- **ImageProcessor**: メインコンポーネント。画像処理のワークフローを管理
+- **ProcessingControls**: 処理オプションの設定UI
+- **ImagePreview**: 画像のプレビュー表示
+- **ExportOptions**: エクスポートオプションの提供
+- **Dropzone**: ファイルのドラッグ＆ドロップインターフェース
+- **ProgressBar**: 処理進捗の視覚化
+
+## ライセンス
+
+[MIT License](LICENSE)
