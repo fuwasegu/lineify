@@ -11,6 +11,7 @@
   import { detectEdges, convertToPngBlob, resizeImage, extractLinesWithProgress, binarizeWithOtsu, extractEdgesFromBinary } from '../utils/imageProcessing';
   import { convertToSvg } from '../utils/svgConverter';
   import ImageEditor from './ImageEditor.svelte';
+  import Button from './ui/Button.svelte';
   
   let threshold = 20;
   let invert = false;
@@ -33,6 +34,10 @@
   
   // 編集モード
   let editMode = false;
+  
+  // 編集履歴のスタック
+  let editHistory: ImageData[] = [];
+  let maxHistoryLength = 10; // 最大履歴数
   
   // ストアからの値を購読
   $: originalImage = $imageStore.originalImage;
@@ -173,6 +178,10 @@
   
   // 編集モードの切り替え
   function toggleEditMode() {
+    if (!editMode && processedImage) {
+      // 編集モードに入る前に現在の画像を履歴に保存
+      saveToHistory(processedImage);
+    }
     editMode = !editMode;
   }
   
@@ -180,13 +189,66 @@
   function applyEdits(event: CustomEvent<ImageData>) {
     console.log('編集適用:', event.detail);
     const editedImageData = event.detail;
+    
+    // 編集前の画像を履歴に保存
+    if (processedImage) {
+      saveToHistory(processedImage);
+    }
+    
     imageStore.setProcessedImage(editedImageData);
     editMode = false;
+  }
+  
+  // 履歴に保存
+  function saveToHistory(imageData: ImageData) {
+    // ImageDataをディープコピー
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    ctx.putImageData(imageData, 0, 0);
+    const copiedImageData = ctx.getImageData(0, 0, imageData.width, imageData.height);
+    
+    // 履歴に追加
+    editHistory.push(copiedImageData);
+    
+    // 履歴が長すぎる場合は古いものを削除
+    if (editHistory.length > maxHistoryLength) {
+      editHistory.shift();
+    }
+    
+    // 配列の変更を反映
+    editHistory = editHistory;
+  }
+  
+  // 元に戻す
+  function undoEdit() {
+    if (editHistory.length === 0) return;
+    
+    // 履歴から最新の状態を取得
+    const previousState = editHistory.pop();
+    editHistory = editHistory; // 配列の変更を反映
+    
+    if (previousState) {
+      imageStore.setProcessedImage(previousState);
+    }
   }
   
   // 編集をキャンセル
   function cancelEdits() {
     editMode = false;
+  }
+  
+  // 履歴をクリア
+  function clearHistory() {
+    editHistory = [];
+  }
+  
+  // 新しい画像がロードされたときに履歴をクリア
+  $: if (originalImage) {
+    clearHistory();
   }
 </script>
 
@@ -233,9 +295,18 @@
                 label="処理後の画像" 
               />
               {#if processedImage}
-                <button class="edit-button" on:click={toggleEditMode}>
-                  ノイズを手動修正
-                </button>
+                <div class="preview-actions">
+                  <button class="edit-button" on:click={toggleEditMode}>
+                    ノイズを手動修正
+                  </button>
+                  
+                  <!-- 元に戻すボタンを追加 -->
+                  {#if editHistory.length > 0}
+                    <button class="undo-button" on:click={undoEdit}>
+                      元に戻す
+                    </button>
+                  {/if}
+                </div>
               {/if}
             </div>
           {/if}
@@ -340,10 +411,15 @@
     height: 100%;
   }
   
-  .edit-button {
+  .preview-actions {
     position: absolute;
     bottom: 0.5rem;
     right: 0.5rem;
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .edit-button, .undo-button {
     background-color: rgba(0, 0, 0, 0.7);
     color: white;
     border: none;
@@ -354,7 +430,15 @@
     transition: background-color 0.2s;
   }
   
-  .edit-button:hover {
+  .edit-button:hover, .undo-button:hover {
     background-color: rgba(0, 0, 0, 0.9);
+  }
+  
+  .undo-button {
+    background-color: rgba(59, 130, 246, 0.7);
+  }
+  
+  .undo-button:hover {
+    background-color: rgba(59, 130, 246, 0.9);
   }
 </style> 

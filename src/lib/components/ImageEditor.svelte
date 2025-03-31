@@ -21,6 +21,11 @@
   let cursorY = 0;
   let showCursor = false;
   
+  // 履歴管理
+  let history: ImageData[] = [];
+  let futureHistory: ImageData[] = [];
+  let maxHistoryLength = 20;
+  
   // ツールオプション
   const toolOptions = [
     { value: 'brush', label: 'ブラシ' },
@@ -59,6 +64,9 @@
     
     // 画像データを描画
     ctx.putImageData(imageData, 0, 0);
+    
+    // 初期状態を履歴に保存
+    saveToHistory();
     
     // 初期スケールを計算（キャンバスを表示領域に合わせる）
     calculateScale();
@@ -153,7 +161,77 @@
   
   // 描画終了
   function stopDrawing() {
-    isDrawing = false;
+    if (isDrawing) {
+      // 描画が終了したら履歴に保存
+      saveToHistory();
+      isDrawing = false;
+    }
+  }
+  
+  // 履歴に保存
+  function saveToHistory() {
+    if (!ctx) return;
+    
+    // 現在の状態を取得
+    const currentState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    
+    // 履歴に追加
+    history.push(currentState);
+    
+    // 履歴が長すぎる場合は古いものを削除
+    if (history.length > maxHistoryLength) {
+      history.shift();
+    }
+    
+    // 新しい操作を行った場合、やり直し履歴をクリア
+    futureHistory = [];
+    
+    // 配列の変更を反映
+    history = history;
+    futureHistory = futureHistory;
+  }
+  
+  // 元に戻す
+  function undo() {
+    if (history.length <= 1) return; // 初期状態は残す
+    
+    // 現在の状態をやり直し履歴に追加
+    const currentState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    futureHistory.push(currentState);
+    
+    // 履歴から最新の状態を削除して、一つ前の状態を取得
+    const previousState = history.pop();
+    
+    if (history.length > 0) {
+      // 最後の要素を取得（現在表示すべき状態）
+      const stateToRestore = history[history.length - 1];
+      ctx.putImageData(stateToRestore, 0, 0);
+    }
+    
+    // 配列の変更を反映
+    history = history;
+    futureHistory = futureHistory;
+  }
+  
+  // やり直し
+  function redo() {
+    if (futureHistory.length === 0) return;
+    
+    // やり直し履歴から最新の状態を取得
+    const stateToRestore = futureHistory.pop();
+    
+    if (stateToRestore) {
+      // 現在の状態を履歴に追加
+      const currentState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      history.push(currentState);
+      
+      // やり直し状態を描画
+      ctx.putImageData(stateToRestore, 0, 0);
+    }
+    
+    // 配列の変更を反映
+    history = history;
+    futureHistory = futureHistory;
   }
   
   // マウス/タッチ位置を取得
@@ -224,6 +302,32 @@
             options={brushSizeOptions} 
             bind:value={brushSize} 
           />
+        </div>
+        
+        <div class="history-controls">
+          <button 
+            class="history-button" 
+            on:click={undo} 
+            disabled={history.length <= 1}
+            aria-label="元に戻す"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 14 4 9 9 4"></polyline>
+              <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
+            </svg>
+          </button>
+          
+          <button 
+            class="history-button" 
+            on:click={redo} 
+            disabled={futureHistory.length === 0}
+            aria-label="やり直し"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 4 20 9 15 14"></polyline>
+              <path d="M4 20v-7a4 4 0 0 1 4-4h12"></path>
+            </svg>
+          </button>
         </div>
         
         <div class="actions">
@@ -319,6 +423,36 @@
   .tool-label {
     font-size: 0.75rem;
     color: #4b5563;
+  }
+  
+  .history-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: auto;
+    margin-right: 1rem;
+  }
+  
+  .history-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 0.25rem;
+    background-color: #f3f4f6;
+    color: #4b5563;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .history-button:hover:not(:disabled) {
+    background-color: #e5e7eb;
+  }
+  
+  .history-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   
   .actions {
