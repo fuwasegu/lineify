@@ -7,7 +7,7 @@
   import ProgressBar from './ui/ProgressBar.svelte';
   import { imageStore } from '../stores/imageStore';
   import { fileToImageData, downloadBlob, downloadSvg } from '../utils/fileHandlers';
-  import { detectEdges, convertToPngBlob, resizeImage, extractLinesWithProgress, binarizeWithOtsu } from '../utils/imageProcessing';
+  import { detectEdges, convertToPngBlob, resizeImage, extractLinesWithProgress, binarizeWithOtsu, extractEdgesFromBinary } from '../utils/imageProcessing';
   import { convertToSvg } from '../utils/svgConverter';
   
   let threshold = 20;
@@ -22,6 +22,9 @@
   
   // プログレス
   let progress = 0;
+  
+  // 追加の状態変数
+  let extractEdges = false; // エッジ抽出を行うかどうか
   
   // ストアからの値を購読
   $: originalImage = $imageStore.originalImage;
@@ -66,20 +69,39 @@
     if (!originalImage) return;
     
     try {
+      console.log('処理開始: extractEdges =', extractEdges);
       imageStore.setProcessing(true);
       progress = 0;
       
       // 大津の二値化を使用
-      const processed = await binarizeWithOtsu(
+      const binarized = await binarizeWithOtsu(
         originalImage, 
         invert,
         (p) => {
-          progress = p;
+          progress = extractEdges ? p * 0.5 : p;
         }
       );
       
-      imageStore.setProcessedImage(processed);
+      console.log('二値化完了');
+      
+      // エッジ抽出オプションが有効な場合
+      if (extractEdges) {
+        console.log('エッジ抽出を実行します');
+        const edged = await extractEdgesFromBinary(
+          binarized,
+          invert,
+          (p) => {
+            progress = 50 + p * 0.5;
+          }
+        );
+        console.log('エッジ抽出完了', edged);
+        imageStore.setProcessedImage(edged);
+      } else {
+        console.log('エッジ抽出をスキップします');
+        imageStore.setProcessedImage(binarized);
+      }
     } catch (err) {
+      console.error('画像処理エラー:', err);
       imageStore.setError(err instanceof Error ? err.message : '画像処理に失敗しました');
     } finally {
       imageStore.setProcessing(false);
@@ -122,11 +144,6 @@
     } finally {
       imageStore.setProcessing(false);
     }
-  }
-  
-  // 値が変更されたら自動的に処理
-  $: if (originalImage && (threshold || invert !== undefined)) {
-    processImage();
   }
 </script>
 
@@ -178,9 +195,11 @@
             bind:enableResize
             bind:maxWidth
             bind:maxHeight
+            bind:extractEdges
             {processing}
             onProcess={processImage}
             onReset={resetImage}
+            onChange={processImage}
           />
         </div>
         

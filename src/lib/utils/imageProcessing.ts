@@ -856,4 +856,133 @@ function removeIsolatedPixels(
   }
   
   return result;
+}
+
+/**
+ * 二値化画像からエッジを抽出する関数
+ * @param imageData 二値化された画像データ
+ * @param invert 白黒反転するかどうか
+ * @param onProgress プログレス報告コールバック
+ * @returns エッジ抽出された画像データ
+ */
+export function extractEdgesFromBinary(
+  imageData: ImageData,
+  invert: boolean = false,
+  onProgress?: (progress: number) => void
+): Promise<ImageData> {
+  return new Promise((resolve) => {
+    const { width, height, data } = imageData;
+    const output = new ImageData(width, height);
+    const outputData = output.data;
+    
+    // 背景を白で初期化
+    for (let i = 0; i < outputData.length; i += 4) {
+      outputData[i] = 255;     // R
+      outputData[i + 1] = 255; // G
+      outputData[i + 2] = 255; // B
+      outputData[i + 3] = 255; // A
+    }
+    
+    setTimeout(() => {
+      // 二値化画像を抽出
+      const binaryImage = new Uint8Array(width * height);
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = (y * width + x) * 4;
+          // グレースケール値を取得（RGBは同じ値のはず）
+          binaryImage[y * width + x] = data[idx] < 128 ? 0 : 255;
+        }
+        
+        // 進捗報告（二値化画像抽出: 0-20%）
+        if (onProgress && y % 10 === 0) {
+          onProgress(Math.floor(20 * y / height));
+        }
+      }
+      
+      if (onProgress) {
+        onProgress(20);
+      }
+      
+      // エッジ検出（輪郭抽出）
+      const edges = new Uint8Array(width * height);
+      
+      // すべてのピクセルを白（255）で初期化
+      for (let i = 0; i < edges.length; i++) {
+        edges[i] = 255;
+      }
+      
+      // 輪郭抽出（黒ピクセルの周囲に白ピクセルがある場合、それを輪郭とする）
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = y * width + x;
+          
+          // 現在のピクセルが黒（0）の場合
+          if (binaryImage[idx] === 0) {
+            // 周囲8近傍に白ピクセルがあるかチェック
+            let hasWhiteNeighbor = false;
+            
+            for (let ky = -1; ky <= 1 && !hasWhiteNeighbor; ky++) {
+              for (let kx = -1; kx <= 1 && !hasWhiteNeighbor; kx++) {
+                if (kx === 0 && ky === 0) continue;
+                
+                const nx = x + kx;
+                const ny = y + ky;
+                
+                if (binaryImage[ny * width + nx] === 255) {
+                  hasWhiteNeighbor = true;
+                }
+              }
+            }
+            
+            // 周囲に白ピクセルがある場合、このピクセルは輪郭
+            if (hasWhiteNeighbor) {
+              edges[idx] = 0;
+            } else {
+              edges[idx] = 255;
+            }
+          } else {
+            edges[idx] = 255;
+          }
+        }
+        
+        // 進捗報告（輪郭抽出: 20-60%）
+        if (onProgress && y % 10 === 0) {
+          onProgress(20 + Math.floor(40 * (y - 1) / (height - 2)));
+        }
+      }
+      
+      if (onProgress) {
+        onProgress(60);
+      }
+      
+      // デバッグ: 輪郭抽出の結果を直接使用
+      const finalResult = edges;
+      
+      // 最終的な画像を生成
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          const outIdx = idx * 4;
+          
+          // エッジピクセル値を設定
+          const pixelValue = invert 
+            ? (finalResult[idx] === 0 ? 255 : 0) 
+            : finalResult[idx];
+          
+          outputData[outIdx] = pixelValue;     // R
+          outputData[outIdx + 1] = pixelValue; // G
+          outputData[outIdx + 2] = pixelValue; // B
+          // アルファは既に255に設定済み
+        }
+      }
+      
+      // 完了
+      if (onProgress) {
+        onProgress(100);
+      }
+      
+      resolve(output);
+    }, 0);
+  });
 } 

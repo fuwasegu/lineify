@@ -14,6 +14,15 @@
   export let enableResize = true;
   export let maxWidth = 1200;
   export let maxHeight = 1200;
+  
+  // 追加のプロパティ
+  export let extractEdges = false;
+  
+  // 新しいプロパティ
+  export let onChange: () => void = () => {};
+  
+  // 値が変更されたときに親コンポーネントに通知
+  $: invert, extractEdges, threshold, onChange();
 </script>
 
 <div class="controls-container">
@@ -27,6 +36,11 @@
     <Toggle 
       label="白黒反転" 
       bind:checked={invert} 
+    />
+    
+    <Toggle 
+      label="エッジのみを抽出" 
+      bind:checked={extractEdges} 
     />
     
     <Toggle 
