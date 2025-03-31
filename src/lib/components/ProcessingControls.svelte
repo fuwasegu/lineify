@@ -7,7 +7,6 @@
   export let invert = false;
   export let simplifyTolerance = 1;
   export let processing = false;
-  export let onProcess: () => void;
   export let onReset: () => void;
   
   // リサイズオプション
@@ -78,14 +77,6 @@
   </div>
   
   <div class="buttons">
-    <Button 
-      variant="primary" 
-      disabled={processing} 
-      on:click={onProcess}
-    >
-      {processing ? '処理中...' : '画像を処理'}
-    </Button>
-    
     <Button 
       variant="outline" 
       on:click={onReset}

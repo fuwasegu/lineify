@@ -197,7 +197,6 @@
             bind:maxHeight
             bind:extractEdges
             {processing}
-            onProcess={processImage}
             onReset={resetImage}
             onChange={processImage}
           />
