@@ -27,6 +27,9 @@
   // 追加の状態変数
   let extractEdges = false; // エッジ抽出を行うかどうか
   
+  // エッジの太さ
+  let edgeThickness = 1;
+  
   // ストアからの値を購読
   $: originalImage = $imageStore.originalImage;
   $: processedImage = $imageStore.processedImage;
@@ -70,7 +73,7 @@
     if (!originalImage) return;
     
     try {
-      console.log('処理開始: extractEdges =', extractEdges);
+      console.log('処理開始: extractEdges =', extractEdges, 'edgeThickness =', edgeThickness);
       imageStore.setProcessing(true);
       progress = 0;
       
@@ -91,6 +94,7 @@
         const edged = await extractEdgesFromBinary(
           binarized,
           invert,
+          edgeThickness,
           (p) => {
             progress = 50 + p * 0.5;
           }
@@ -194,6 +198,7 @@
             bind:maxWidth
             bind:maxHeight
             bind:extractEdges
+            bind:edgeThickness
             {processing}
             onReset={resetImage}
             onChange={processImage}

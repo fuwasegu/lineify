@@ -862,12 +862,14 @@ function removeIsolatedPixels(
  * 二値化画像からエッジを抽出する関数
  * @param imageData 二値化された画像データ
  * @param invert 白黒反転するかどうか
+ * @param edgeThickness エッジの太さ (1-5)
  * @param onProgress プログレス報告コールバック
  * @returns エッジ抽出された画像データ
  */
 export function extractEdgesFromBinary(
   imageData: ImageData,
   invert: boolean = false,
+  edgeThickness: number = 1,
   onProgress?: (progress: number) => void
 ): Promise<ImageData> {
   return new Promise((resolve) => {
@@ -956,8 +958,52 @@ export function extractEdgesFromBinary(
         onProgress(60);
       }
       
-      // デバッグ: 輪郭抽出の結果を直接使用
-      const finalResult = edges;
+      // エッジの太さを調整（膨張処理）
+      const thickenedEdges = new Uint8Array(edges);
+      
+      if (edgeThickness > 1) {
+        // 膨張処理の回数（太さに応じて）
+        const iterations = Math.min(Math.max(1, edgeThickness - 1), 4);
+        
+        for (let iter = 0; iter < iterations; iter++) {
+          const tempEdges = new Uint8Array(thickenedEdges);
+          
+          for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+              const idx = y * width + x;
+              
+              // 現在のピクセルが白（255）の場合
+              if (tempEdges[idx] === 255) {
+                // 周囲8近傍に黒ピクセルがあるかチェック
+                let hasBlackNeighbor = false;
+                
+                for (let ky = -1; ky <= 1 && !hasBlackNeighbor; ky++) {
+                  for (let kx = -1; kx <= 1 && !hasBlackNeighbor; kx++) {
+                    if (kx === 0 && ky === 0) continue;
+                    
+                    const nx = x + kx;
+                    const ny = y + ky;
+                    
+                    if (tempEdges[ny * width + nx] === 0) {
+                      hasBlackNeighbor = true;
+                    }
+                  }
+                }
+                
+                // 周囲に黒ピクセルがある場合、このピクセルも黒に
+                if (hasBlackNeighbor) {
+                  thickenedEdges[idx] = 0;
+                }
+              }
+            }
+          }
+        }
+        
+        // 進捗報告（エッジ太さ調整: 60-80%）
+        if (onProgress) {
+          onProgress(80);
+        }
+      }
       
       // 最終的な画像を生成
       for (let y = 0; y < height; y++) {
@@ -967,8 +1013,8 @@ export function extractEdgesFromBinary(
           
           // エッジピクセル値を設定
           const pixelValue = invert 
-            ? (finalResult[idx] === 0 ? 255 : 0) 
-            : finalResult[idx];
+            ? (thickenedEdges[idx] === 0 ? 255 : 0) 
+            : thickenedEdges[idx];
           
           outputData[outIdx] = pixelValue;     // R
           outputData[outIdx + 1] = pixelValue; // G

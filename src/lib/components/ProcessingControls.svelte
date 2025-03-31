@@ -2,6 +2,7 @@
   import Slider from './ui/Slider.svelte';
   import Toggle from './ui/Toggle.svelte';
   import Button from './ui/Button.svelte';
+  import ButtonGroup from './ui/ButtonGroup.svelte';
   
   export let threshold = 20;
   export let invert = false;
@@ -16,12 +17,22 @@
   
   // 追加のプロパティ
   export let extractEdges = false;
+  export let edgeThickness = 1;
+  
+  // エッジの太さのオプション
+  const thicknessOptions = [
+    { value: 1, label: '極細' },
+    { value: 2, label: '細い' },
+    { value: 3, label: '標準' },
+    { value: 4, label: '太い' },
+    { value: 5, label: '極太' }
+  ];
   
   // 新しいプロパティ
   export let onChange: () => void = () => {};
   
   // 値が変更されたときに親コンポーネントに通知
-  $: invert, extractEdges, threshold, onChange();
+  $: invert, extractEdges, threshold, edgeThickness, onChange();
 </script>
 
 <div class="controls-container">
@@ -41,6 +52,16 @@
       label="エッジのみを抽出" 
       bind:checked={extractEdges} 
     />
+    
+    {#if extractEdges}
+      <div class="edge-options">
+        <div class="option-label">エッジの太さ</div>
+        <ButtonGroup 
+          options={thicknessOptions} 
+          bind:value={edgeThickness} 
+        />
+      </div>
+    {/if}
     
     <Toggle 
       label="大きな画像をリサイズする" 
@@ -107,10 +128,16 @@
     margin-bottom: 1.5rem;
   }
   
-  .resize-options {
+  .resize-options, .edge-options {
     margin-left: 1rem;
     padding-left: 0.5rem;
     border-left: 2px solid #e5e7eb;
+  }
+  
+  .option-label {
+    font-size: 0.875rem;
+    color: #4b5563;
+    margin-bottom: 0.5rem;
   }
   
   .buttons {
