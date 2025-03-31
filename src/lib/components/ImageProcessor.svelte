@@ -5,6 +5,7 @@
   import ProcessingControls from './ProcessingControls.svelte';
   import ExportOptions from './ExportOptions.svelte';
   import ProgressBar from './ui/ProgressBar.svelte';
+  import ProgressOverlay from './ui/ProgressOverlay.svelte';
   import { imageStore } from '../stores/imageStore';
   import { fileToImageData, downloadBlob, downloadSvg } from '../utils/fileHandlers';
   import { detectEdges, convertToPngBlob, resizeImage, extractLinesWithProgress, binarizeWithOtsu, extractEdgesFromBinary } from '../utils/imageProcessing';
@@ -155,6 +156,10 @@
     </div>
   {/if}
   
+  {#if processing}
+    <ProgressOverlay {progress} message="画像処理中..." />
+  {/if}
+  
   {#if !originalImage}
     <Dropzone 
       on:change={handleFileChange} 
@@ -163,13 +168,6 @@
     />
   {:else}
     <div class="image-container">
-      {#if processing}
-        <div class="progress-container">
-          <p>処理中... {progress}%</p>
-          <ProgressBar {progress} />
-        </div>
-      {/if}
-      
       <div class="preview-grid">
         <div class="preview-item">
           <ImagePreview 
@@ -248,19 +246,6 @@
     cursor: pointer;
     font-size: 1rem;
     color: #b91c1c;
-  }
-  
-  .progress-container {
-    background-color: #f0f9ff;
-    padding: 1rem;
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
-  }
-  
-  .progress-container p {
-    margin: 0 0 0.5rem 0;
-    font-size: 0.875rem;
-    color: #0369a1;
   }
   
   .image-container {
