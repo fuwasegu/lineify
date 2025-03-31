@@ -81,14 +81,27 @@
       imageStore.setProcessing(true);
       progress = 0;
       
-      // 大津の二値化を使用
-      const binarized = await binarizeWithOtsu(
-        originalImage, 
-        invert,
-        (p) => {
-          progress = extractEdges ? p * 0.5 : p;
-        }
-      );
+      // 手動修正された画像があればそれを使用し、なければ元画像から二値化
+      let binarized;
+      if (!extractEdges && processedImage) {
+        // エッジ抽出しない場合は、既存の処理済み画像をそのまま使用
+        imageStore.setProcessedImage(processedImage);
+        imageStore.setProcessing(false);
+        return;
+      } else if (extractEdges && processedImage) {
+        // エッジ抽出する場合は、既存の処理済み画像からエッジを抽出
+        binarized = processedImage;
+        progress = 50; // 二値化はすでに完了しているとみなす
+      } else {
+        // 処理済み画像がない場合は、元画像から二値化
+        binarized = await binarizeWithOtsu(
+          originalImage, 
+          invert,
+          (p) => {
+            progress = extractEdges ? p * 0.5 : p;
+          }
+        );
+      }
       
       console.log('二値化完了');
       
@@ -107,7 +120,10 @@
         imageStore.setProcessedImage(edged);
       } else {
         console.log('エッジ抽出をスキップします');
-        imageStore.setProcessedImage(binarized);
+        if (!processedImage) {
+          // 初回処理時のみ二値化結果を設定
+          imageStore.setProcessedImage(binarized);
+        }
       }
     } catch (err) {
       console.error('画像処理エラー:', err);
