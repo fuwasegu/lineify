@@ -9,6 +9,7 @@
   export let simplifyTolerance = 1;
   export let processing = false;
   export let onReset: () => void;
+  export let onDelete: () => void;
   
   // リサイズオプション
   export let enableResize = true;
@@ -104,6 +105,13 @@
     >
       リセット
     </Button>
+    
+    <Button 
+      variant="danger" 
+      on:click={onDelete}
+    >
+      画像を削除
+    </Button>
   </div>
 </div>
 
@@ -143,6 +151,7 @@
   .buttons {
     display: flex;
     gap: 0.5rem;
+    margin-top: 1rem;
   }
   
   @media (max-width: 768px) {

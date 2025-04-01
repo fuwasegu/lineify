@@ -39,6 +39,10 @@
   let editHistory: ImageData[] = [];
   let maxHistoryLength = 10; // 最大履歴数
   
+  // 二値化画像とエッジ画像を保存するための変数を追加
+  let binarizedImage: ImageData | null = null;
+  let edgedImage: ImageData | null = null;
+  
   // ストアからの値を購読
   $: originalImage = $imageStore.originalImage;
   $: processedImage = $imageStore.processedImage;
@@ -51,6 +55,9 @@
     const file = event.detail;
     
     try {
+      // すべての状態をリセット
+      resetAllStates();
+      
       imageStore.setProcessing(true);
       progress = 0;
       
@@ -87,48 +94,40 @@
       progress = 0;
       
       // 手動修正された画像があればそれを使用し、なければ元画像から二値化
-      let binarized;
-      if (!extractEdges && processedImage) {
-        // エッジ抽出しない場合は、既存の処理済み画像をそのまま使用
-        imageStore.setProcessedImage(processedImage);
-        imageStore.setProcessing(false);
-        return;
-      } else if (extractEdges && processedImage) {
-        // エッジ抽出する場合は、既存の処理済み画像からエッジを抽出
-        binarized = processedImage;
-        progress = 50; // 二値化はすでに完了しているとみなす
-      } else {
-        // 処理済み画像がない場合は、元画像から二値化
-        binarized = await binarizeWithOtsu(
+      if (!binarizedImage && !processedImage) {
+        // 初回処理時：元画像から二値化
+        binarizedImage = await binarizeWithOtsu(
           originalImage, 
           invert,
           (p) => {
             progress = extractEdges ? p * 0.5 : p;
           }
         );
+        console.log('二値化完了（初回）');
+      } else if (processedImage && !binarizedImage) {
+        // 二値化画像が保存されていない場合は現在の処理済み画像を二値化画像として保存
+        binarizedImage = processedImage;
       }
-      
-      console.log('二値化完了');
       
       // エッジ抽出オプションが有効な場合
       if (extractEdges) {
         console.log('エッジ抽出を実行します');
-        const edged = await extractEdgesFromBinary(
-          binarized,
-          invert,
-          edgeThickness,
-          (p) => {
-            progress = 50 + p * 0.5;
-          }
-        );
-        console.log('エッジ抽出完了', edged);
-        imageStore.setProcessedImage(edged);
-      } else {
-        console.log('エッジ抽出をスキップします');
-        if (!processedImage) {
-          // 初回処理時のみ二値化結果を設定
-          imageStore.setProcessedImage(binarized);
+        if (!edgedImage) {
+          // エッジ画像がまだ生成されていない場合は新たに生成
+          edgedImage = await extractEdgesFromBinary(
+            binarizedImage!,
+            invert,
+            edgeThickness,
+            (p) => {
+              progress = 50 + p * 0.5;
+            }
+          );
+          console.log('エッジ抽出完了（新規）');
         }
+        imageStore.setProcessedImage(edgedImage);
+      } else {
+        console.log('二値化画像を表示します');
+        imageStore.setProcessedImage(binarizedImage);
       }
     } catch (err) {
       console.error('画像処理エラー:', err);
@@ -138,10 +137,155 @@
     }
   }
   
+  // 編集結果を適用（デバッグログ追加）
+  function applyEdits(event: CustomEvent<ImageData>) {
+    console.log('編集適用:', event.detail);
+    const editedImageData = event.detail;
+    
+    // 編集前の画像を履歴に保存
+    if (processedImage) {
+      // 画像をコピーして保存
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        canvas.width = processedImage.width;
+        canvas.height = processedImage.height;
+        ctx.putImageData(processedImage, 0, 0);
+        const copiedImage = ctx.getImageData(0, 0, processedImage.width, processedImage.height);
+        
+        // 履歴に追加
+        editHistory.push(copiedImage);
+        
+        // 履歴が長すぎる場合は古いものを削除
+        if (editHistory.length > maxHistoryLength) {
+          editHistory.shift();
+        }
+        
+        // 配列の変更を反映
+        editHistory = editHistory;
+      }
+    }
+    
+    // 現在表示中の画像タイプに応じて、適切な画像を更新
+    if (extractEdges) {
+      edgedImage = editedImageData;
+    } else {
+      binarizedImage = editedImageData;
+    }
+    
+    imageStore.setProcessedImage(editedImageData);
+    editMode = false;
+  }
+  
+  // 元に戻す
+  function undoEdit() {
+    if (editHistory.length === 0) return;
+    
+    // 履歴から最新の状態を取得
+    const previousState = editHistory.pop();
+    editHistory = editHistory; // 配列の変更を反映
+    
+    if (previousState) {
+      imageStore.setProcessedImage(previousState);
+    }
+  }
+  
+  // 編集をキャンセル
+  function cancelEdits() {
+    editMode = false;
+  }
+  
+  // 履歴をクリア
+  function clearHistory() {
+    editHistory = [];
+  }
+  
+  // 履歴に画像を保存するヘルパー関数（プライベート実装）
+  function addToHistory(imageData: ImageData) {
+    // 履歴に追加
+    editHistory.push(imageData);
+    
+    // 履歴が長すぎる場合は古いものを削除
+    if (editHistory.length > maxHistoryLength) {
+      editHistory.shift();
+    }
+    
+    // 配列の変更を反映
+    editHistory = editHistory;
+  }
+  
+  // 新しい画像がロードされたときに履歴をクリア
+  $: if (originalImage) {
+    clearHistory();
+  }
+  
+  // エッジの太さが変更されたときにエッジ画像を再生成
+  $: if (edgeThickness && extractEdges && binarizedImage) {
+    // エッジの太さが変更されたらエッジ画像をリセット
+    edgedImage = null;
+    processImage();
+  }
+  
+  // 白黒反転が変更されたときに両方の画像をリセット
+  $: if (invert !== undefined) {
+    // 反転設定が変更されたら両方の画像をリセット
+    binarizedImage = null;
+    edgedImage = null;
+    processImage();
+  }
+  
   // リセット
   function resetImage() {
+    // 画像処理パラメータを初期値に戻す
+    threshold = 20;
+    invert = false;
+    extractEdges = false;
+    edgeThickness = 1;
+    simplifyTolerance = 1;
+    
+    // 画像処理状態をリセット
+    binarizedImage = null;
+    edgedImage = null;
+    editMode = false;
+    
+    // 履歴をクリア
+    clearHistory();
+    
+    // 元画像から再処理
+    if (originalImage) {
+      processImage();
+    }
+    
+    console.log('画像処理をリセットしました');
+  }
+  
+  // 削除関数を追加 - 画像を含めすべての状態をリセット
+  function deleteImage() {
+    // すべての状態をリセット
+    resetAllStates();
+    
+    console.log('画像を削除しました');
+  }
+  
+  // すべての状態をリセットする関数
+  function resetAllStates() {
+    // 画像関連の状態をリセット
+    binarizedImage = null;
+    edgedImage = null;
+    editMode = false;
+    
+    // 履歴をクリア
+    clearHistory();
+    
+    // 処理オプションを初期値に戻す
+    threshold = 20;
+    invert = false;
+    extractEdges = false;
+    edgeThickness = 1;
+    simplifyTolerance = 1;
+    
+    // ストアをリセット
     imageStore.reset();
-    progress = 0;
   }
   
   // PNG形式でエクスポート
@@ -178,77 +322,30 @@
   
   // 編集モードの切り替え
   function toggleEditMode() {
+    // processedImageがnullでないときのみ保存処理を行う
     if (!editMode && processedImage) {
-      // 編集モードに入る前に現在の画像を履歴に保存
-      saveToHistory(processedImage);
+      // 画像をコピーして保存
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        canvas.width = processedImage.width;
+        canvas.height = processedImage.height;
+        ctx.putImageData(processedImage, 0, 0);
+        const copiedImage = ctx.getImageData(0, 0, processedImage.width, processedImage.height);
+        
+        // 履歴に追加
+        editHistory.push(copiedImage);
+        
+        // 履歴が長すぎる場合は古いものを削除
+        if (editHistory.length > maxHistoryLength) {
+          editHistory.shift();
+        }
+        
+        // 配列の変更を反映
+        editHistory = editHistory;
+      }
     }
     editMode = !editMode;
-  }
-  
-  // 編集結果を適用（デバッグログ追加）
-  function applyEdits(event: CustomEvent<ImageData>) {
-    console.log('編集適用:', event.detail);
-    const editedImageData = event.detail;
-    
-    // 編集前の画像を履歴に保存
-    if (processedImage) {
-      saveToHistory(processedImage);
-    }
-    
-    imageStore.setProcessedImage(editedImageData);
-    editMode = false;
-  }
-  
-  // 履歴に保存
-  function saveToHistory(imageData: ImageData) {
-    // ImageDataをディープコピー
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    canvas.width = imageData.width;
-    canvas.height = imageData.height;
-    ctx.putImageData(imageData, 0, 0);
-    const copiedImageData = ctx.getImageData(0, 0, imageData.width, imageData.height);
-    
-    // 履歴に追加
-    editHistory.push(copiedImageData);
-    
-    // 履歴が長すぎる場合は古いものを削除
-    if (editHistory.length > maxHistoryLength) {
-      editHistory.shift();
-    }
-    
-    // 配列の変更を反映
-    editHistory = editHistory;
-  }
-  
-  // 元に戻す
-  function undoEdit() {
-    if (editHistory.length === 0) return;
-    
-    // 履歴から最新の状態を取得
-    const previousState = editHistory.pop();
-    editHistory = editHistory; // 配列の変更を反映
-    
-    if (previousState) {
-      imageStore.setProcessedImage(previousState);
-    }
-  }
-  
-  // 編集をキャンセル
-  function cancelEdits() {
-    editMode = false;
-  }
-  
-  // 履歴をクリア
-  function clearHistory() {
-    editHistory = [];
-  }
-  
-  // 新しい画像がロードされたときに履歴をクリア
-  $: if (originalImage) {
-    clearHistory();
   }
 </script>
 
@@ -326,6 +423,7 @@
             bind:edgeThickness
             {processing}
             onReset={resetImage}
+            onDelete={deleteImage}
             onChange={processImage}
           />
         </div>
@@ -337,14 +435,6 @@
             disabled={!processedImage || processing}
           />
         </div>
-      </div>
-      
-      <div class="upload-new">
-        <Dropzone 
-          on:change={handleFileChange} 
-          on:error={handleError}
-          maxSize={20 * 1024 * 1024}
-        />
       </div>
     </div>
   {/if}
@@ -381,42 +471,44 @@
   .image-container {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 2rem;
   }
   
   .preview-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+    gap: 2rem;
+    min-height: 400px;
+  }
+  
+  .preview-item {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 300px;
   }
   
   .controls-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-  }
-  
-  .upload-new {
-    margin-top: 1rem;
-  }
-  
-  @media (max-width: 768px) {
-    .preview-grid, .controls-grid {
-      grid-template-columns: 1fr;
-    }
+    grid-template-columns: 2fr 1fr;
+    gap: 2rem;
+    align-items: flex-start;
   }
   
   .preview-with-actions {
     position: relative;
     height: 100%;
+    display: flex;
+    flex-direction: column;
   }
   
   .preview-actions {
     position: absolute;
-    bottom: 0.5rem;
-    right: 0.5rem;
+    bottom: 0.75rem;
+    right: 1.5rem;
     display: flex;
     gap: 0.5rem;
+    z-index: 5;
   }
   
   .edit-button, .undo-button {
@@ -425,9 +517,10 @@
     border: none;
     border-radius: 0.25rem;
     padding: 0.5rem 0.75rem;
-    font-size: 0.75rem;
+    font-size: 0.875rem;
     cursor: pointer;
     transition: background-color 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
   
   .edit-button:hover, .undo-button:hover {
@@ -440,5 +533,15 @@
   
   .undo-button:hover {
     background-color: rgba(59, 130, 246, 0.9);
+  }
+  
+  @media (max-width: 768px) {
+    .preview-grid, .controls-grid {
+      grid-template-columns: 1fr;
+    }
+    
+    .preview-item {
+      min-height: 250px;
+    }
   }
 </style> 

@@ -19,6 +19,8 @@
   let scale = 1;
   let cursorX = 0;
   let cursorY = 0;
+  let canvasX = 0;  // キャンバス上の実際の位置
+  let canvasY = 0;  // キャンバス上の実際の位置
   let showCursor = false;
   
   // 履歴管理
@@ -48,6 +50,19 @@
     : (color === 'white' ? '#000000' : '#FFFFFF');
   
   onMount(() => {
+    console.log('ImageEditor マウント - 画像サイズ:', imageData.width, 'x', imageData.height);
+    
+    // 状態を初期化
+    isDrawing = false;
+    lastX = 0;
+    lastY = 0;
+    scale = 1;
+    cursorX = 0;
+    cursorY = 0;
+    showCursor = false;
+    history = [];
+    futureHistory = [];
+    
     if (!canvas) return;
     
     // willReadFrequently属性を追加してパフォーマンス警告を解消
@@ -83,6 +98,9 @@
   function calculateScale() {
     if (!canvas || !canvas.parentElement) return;
     
+    // キャンバスをリセット
+    canvas.style.transform = '';
+    
     const containerWidth = canvas.parentElement.clientWidth;
     const containerHeight = canvas.parentElement.clientHeight;
     
@@ -95,13 +113,50 @@
     // スケールを適用
     canvas.style.transform = `scale(${scale})`;
     canvas.style.transformOrigin = 'top left';
+    
+    console.log('スケール再計算:', scale, 'コンテナサイズ:', containerWidth, 'x', containerHeight, '画像サイズ:', imageData.width, 'x', imageData.height);
+  }
+  
+  // マウス/タッチ位置を取得
+  function getPosition(e: MouseEvent | TouchEvent) {
+    if (!canvas) {
+      return { x: 0, y: 0 };
+    }
+    
+    let clientX: number, clientY: number;
+    
+    if ('touches' in e) {
+      // タッチイベント
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      // マウスイベント
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    
+    const rect = canvas.getBoundingClientRect();
+    
+    // ブラウザ上の実際のカーソル位置（カスタムカーソルの表示位置）
+    // rect.widthがスケール適用後の幅なので、実際のスケール値を算出
+    // getBoundingClientRectはトランスフォーム適用後の値を返すため、
+    // キャンバスの元の寸法とスケール後の寸法の比率を使用する
+    const actualScale = rect.width / canvas.width;
+    
+    // マウス座標（ブラウザ座標系）
+    cursorX = clientX - rect.left;
+    cursorY = clientY - rect.top;
+    
+    // キャンバス座標系に変換（描画用）
+    canvasX = Math.floor(cursorX / actualScale);
+    canvasY = Math.floor(cursorY / actualScale);
+    
+    return { x: canvasX, y: canvasY };
   }
   
   // カーソル位置の更新
   function updateCursorPosition(e: MouseEvent | TouchEvent) {
-    const pos = getPosition(e);
-    cursorX = pos.x;
-    cursorY = pos.y;
+    getPosition(e);
     showCursor = true;
   }
   
@@ -118,8 +173,8 @@
     
     // マウス/タッチ位置を取得
     const pos = getPosition(e);
-    lastX = pos.x;
-    lastY = pos.y;
+    lastX = canvasX;  // スケール調整済みの位置を使う
+    lastY = canvasY;  // スケール調整済みの位置を使う
     
     // 単一点の描画
     ctx.fillStyle = drawColor;
@@ -127,7 +182,7 @@
     ctx.arc(lastX, lastY, brushSize / 2, 0, Math.PI * 2);
     ctx.fill();
     
-    console.log('描画開始:', lastX, lastY, 'ツール:', selectedTool, '色:', drawColor);
+    console.log('描画開始:', lastX, lastY, 'ツール:', selectedTool, '色:', drawColor, 'スケール:', scale);
   }
   
   // 描画中
@@ -136,10 +191,9 @@
     
     if (!isDrawing || !ctx) return;
     
-    // マウス/タッチ位置を取得
-    const pos = getPosition(e);
-    const currentX = pos.x;
-    const currentY = pos.y;
+    // 現在のキャンバス上の位置を取得
+    const currentX = canvasX;  // スケール調整済みの位置を使う
+    const currentY = canvasY;  // スケール調整済みの位置を使う
     
     // 線を描画
     ctx.strokeStyle = drawColor;
@@ -152,7 +206,7 @@
     ctx.lineTo(currentX, currentY);
     ctx.stroke();
     
-    console.log('描画中:', lastX, lastY, 'から', currentX, currentY, '色:', drawColor);
+    console.log('描画中:', 'ブラウザ座標:', cursorX, cursorY, 'キャンバス座標:', currentX, currentY, '色:', drawColor);
     
     // 現在位置を保存
     lastX = currentX;
@@ -232,33 +286,6 @@
     // 配列の変更を反映
     history = history;
     futureHistory = futureHistory;
-  }
-  
-  // マウス/タッチ位置を取得
-  function getPosition(e: MouseEvent | TouchEvent) {
-    if (!canvas) {
-      return { x: 0, y: 0 };
-    }
-    
-    let clientX: number, clientY: number;
-    
-    if ('touches' in e) {
-      // タッチイベント
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      // マウスイベント
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
-    
-    const rect = canvas.getBoundingClientRect();
-    
-    // スケールを考慮した座標計算
-    const x = Math.floor((clientX - rect.left) / scale);
-    const y = Math.floor((clientY - rect.top) / scale);
-    
-    return { x, y };
   }
   
   // 変更を適用
@@ -356,13 +383,14 @@
           ></canvas>
           
           {#if showCursor}
+            <!-- カスタムカーソル - 実際のマウス位置に表示 -->
             <div 
               class="custom-cursor" 
               style="
-                left: {cursorX}px; 
-                top: {cursorY}px; 
-                width: {brushSize}px; 
-                height: {brushSize}px;
+                width: {brushSize * scale}px; 
+                height: {brushSize * scale}px; 
+                left: {cursorX}px;
+                top: {cursorY}px;
                 transform: translate(-50%, -50%);
               "
             ></div>
@@ -506,6 +534,7 @@
     background-color: white;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     cursor: none; /* 標準カーソルを非表示 */
+    transform-origin: top left; /* トランスフォームの基点を明示的に指定 */
   }
   
   .custom-cursor {

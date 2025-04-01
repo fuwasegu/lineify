@@ -1,6 +1,6 @@
 <script lang="ts">
   export let type: 'button' | 'submit' | 'reset' = 'button';
-  export let variant: 'primary' | 'secondary' | 'outline' = 'primary';
+  export let variant: 'primary' | 'secondary' | 'outline' | 'danger' = 'primary';
   export let disabled = false;
   export let fullWidth = false;
 </script>
@@ -62,5 +62,14 @@
   
   .full-width {
     width: 100%;
+  }
+  
+  .btn-danger {
+    background-color: #ef4444;
+    color: white;
+  }
+  
+  .btn-danger:hover:not(:disabled) {
+    background-color: #dc2626;
   }
 </style> 
