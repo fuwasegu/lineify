@@ -35,6 +35,9 @@
   // 編集モード
   let editMode = false;
   
+  // モバイルデバイスかどうかのフラグ
+  let isMobile = false;
+  
   // 編集履歴のスタック
   let editHistory: ImageData[] = [];
   let maxHistoryLength = 10; // 最大履歴数
@@ -49,6 +52,37 @@
   $: filename = $imageStore.filename;
   $: processing = $imageStore.processing;
   $: error = $imageStore.error;
+  
+  onMount(() => {
+    // マウント時にデバイス判定を行う
+    isMobile = checkIfMobile();
+    
+    // デバイス情報をコンソールに出力（デバッグ用）
+    console.log('デバイス情報:', {
+      isMobile,
+      userAgent: navigator.userAgent,
+      windowWidth: window.innerWidth,
+      hasTouchScreen: 'ontouchstart' in window || navigator.maxTouchPoints > 0
+    });
+    
+    // ウィンドウサイズ変更時にもモバイル判定を更新
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  });
+  
+  // リサイズハンドラー
+  function handleResize() {
+    isMobile = checkIfMobile();
+    
+    // モバイルに変わった場合、編集モードを強制終了
+    if (isMobile && editMode) {
+      editMode = false;
+      showMobileEditMessage();
+    }
+  }
   
   // ファイルがドロップされたときの処理
   async function handleFileChange(event: CustomEvent<File>) {
@@ -82,6 +116,33 @@
   // エラーハンドリング
   function handleError(event: CustomEvent<string>) {
     imageStore.setError(event.detail);
+  }
+  
+  // スマホでの編集ボタン押下時の処理
+  function showMobileEditMessage() {
+    imageStore.setError('この機能はPC版でのみ利用可能です。PCからご利用ください。');
+  }
+  
+  // デバイスがモバイルかどうか判定する関数（複数の条件を組み合わせて判定）
+  function checkIfMobile() {
+    // ブラウザがロードされているときのみ実行
+    if (typeof window === 'undefined') return false;
+
+    // 1. User-Agent による判定
+    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera || '';
+    const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i;
+    
+    // 2. タッチデバイスかどうかの判定
+    const hasTouchScreen = 'ontouchstart' in window || 
+                           navigator.maxTouchPoints > 0 || 
+                           (navigator as any).msMaxTouchPoints > 0;
+    
+    // 3. 画面サイズによる判定（768px以下をモバイルとする一般的な基準）
+    const hasSmallScreen = window.innerWidth <= 768;
+    
+    // 複数の条件を組み合わせて判定
+    // User-AgentがモバイルっぽいOR（タッチ機能があって画面が小さい）場合にモバイルと判定
+    return mobileRegex.test(userAgent.toLowerCase()) || (hasTouchScreen && hasSmallScreen);
   }
   
   // 画像処理
@@ -148,10 +209,12 @@
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        canvas.width = processedImage.width;
-        canvas.height = processedImage.height;
-        ctx.putImageData(processedImage, 0, 0);
-        const copiedImage = ctx.getImageData(0, 0, processedImage.width, processedImage.height);
+        // processedImageがnullでないことを確認済み
+        const currentImage = processedImage;
+        canvas.width = currentImage.width;
+        canvas.height = currentImage.height;
+        ctx.putImageData(currentImage, 0, 0);
+        const copiedImage = ctx.getImageData(0, 0, currentImage.width, currentImage.height);
         
         // 履歴に追加
         editHistory.push(copiedImage);
@@ -322,16 +385,38 @@
   
   // 編集モードの切り替え
   function toggleEditMode() {
+    // 必ず最新の判定を行う（isMobileが古くなっている可能性があるため）
+    const currentIsMobile = checkIfMobile();
+    
+    // モバイルの状態を更新
+    if (isMobile !== currentIsMobile) {
+      isMobile = currentIsMobile;
+    }
+    
+    // モバイルデバイスの場合はメッセージを表示して終了
+    if (isMobile) {
+      showMobileEditMessage();
+      return;
+    }
+    
+    // processedImageがnullの場合は処理を終了
+    if (!processedImage) {
+      console.log('processedImageがnullのため編集モードを開始できません');
+      return;
+    }
+    
     // processedImageがnullでないときのみ保存処理を行う
-    if (!editMode && processedImage) {
+    if (!editMode) {
       // 画像をコピーして保存
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        canvas.width = processedImage.width;
-        canvas.height = processedImage.height;
-        ctx.putImageData(processedImage, 0, 0);
-        const copiedImage = ctx.getImageData(0, 0, processedImage.width, processedImage.height);
+        // ここでは既にnullチェックを行っているので安全
+        const currentImage = processedImage;
+        canvas.width = currentImage.width;
+        canvas.height = currentImage.height;
+        ctx.putImageData(currentImage, 0, 0);
+        const copiedImage = ctx.getImageData(0, 0, currentImage.width, currentImage.height);
         
         // 履歴に追加
         editHistory.push(copiedImage);
@@ -345,7 +430,20 @@
         editHistory = editHistory;
       }
     }
+    
+    // 編集モードを切り替え
     editMode = !editMode;
+    
+    // デバッグログ
+    console.log('編集モード切替:', editMode ? '開始' : '終了', '(モバイル:', isMobile, ')');
+  }
+  
+  // モバイルモードかつ編集モードになっていないかチェック
+  $: if (isMobile && editMode) {
+    // モバイルデバイスで編集モードになっている場合は強制的に終了
+    console.log('モバイルデバイスで編集モードが検出されました。強制終了します。');
+    editMode = false;
+    showMobileEditMessage();
   }
 </script>
 
@@ -378,7 +476,7 @@
         </div>
         
         <div class="preview-item">
-          {#if editMode && processedImage}
+          {#if !isMobile && editMode && processedImage}
             <ImageEditor 
               imageData={processedImage}
               color={invert ? 'black' : 'white'}
@@ -394,7 +492,8 @@
               {#if processedImage}
                 <div class="preview-actions">
                   <button class="edit-button" on:click={toggleEditMode}>
-                    ノイズを手動修正
+                    <span class="desktop-only">ノイズを手動修正</span>
+                    <span class="mobile-only">PC版専用機能</span>
                   </button>
                   
                   <!-- 元に戻すボタンを追加 -->
@@ -535,6 +634,14 @@
     background-color: rgba(59, 130, 246, 0.9);
   }
   
+  .desktop-only {
+    display: inline;
+  }
+  
+  .mobile-only {
+    display: none;
+  }
+  
   @media (max-width: 768px) {
     .preview-grid, .controls-grid {
       grid-template-columns: 1fr;
@@ -542,6 +649,25 @@
     
     .preview-item {
       min-height: 250px;
+    }
+    
+    .desktop-only {
+      display: none;
+    }
+    
+    .mobile-only {
+      display: inline;
+    }
+    
+    /* モバイル向けの編集ボタンスタイル */
+    .edit-button {
+      background-color: rgba(107, 114, 128, 0.7); /* グレーっぽい色に変更 */
+      cursor: help; /* ヘルプカーソルを表示 */
+      font-style: italic; /* 斜体にして特別な状態を示す */
+    }
+    
+    .edit-button:hover {
+      background-color: rgba(107, 114, 128, 0.9);
     }
   }
 </style> 
