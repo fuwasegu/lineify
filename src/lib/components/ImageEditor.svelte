@@ -104,17 +104,23 @@
     const containerWidth = canvas.parentElement.clientWidth;
     const containerHeight = canvas.parentElement.clientHeight;
     
-    const scaleX = containerWidth / imageData.width;
-    const scaleY = containerHeight / imageData.height;
+    console.log('コンテナサイズ:', containerWidth, 'x', containerHeight, '画像サイズ:', imageData.width, 'x', imageData.height);
+    
+    // 画像が大きすぎる場合は縮小、小さすぎる場合は最大でも等倍まで拡大
+    // パディングを確保するために少し小さめのスケールを使用
+    const padding = 20; // ピクセル単位のパディング
+    const scaleX = (containerWidth - padding * 2) / imageData.width;
+    const scaleY = (containerHeight - padding * 2) / imageData.height;
     
     // 小さい方のスケールを使用（画像全体が表示されるように）
-    scale = Math.min(scaleX, scaleY, 1); // 最大スケールは1（等倍）
+    // 最大スケールは1（等倍）まで
+    scale = Math.min(scaleX, scaleY, 1);
     
     // スケールを適用
     canvas.style.transform = `scale(${scale})`;
     canvas.style.transformOrigin = 'top left';
     
-    console.log('スケール再計算:', scale, 'コンテナサイズ:', containerWidth, 'x', containerHeight, '画像サイズ:', imageData.width, 'x', imageData.height);
+    console.log('スケール計算結果:', scale);
   }
   
   // マウス/タッチ位置を取得
@@ -136,20 +142,33 @@
     }
     
     const rect = canvas.getBoundingClientRect();
+    const canvasContainer = canvas.closest('.canvas-container');
+    
+    // スクロール位置の取得
+    const scrollLeft = canvasContainer ? canvasContainer.scrollLeft : 0;
+    const scrollTop = canvasContainer ? canvasContainer.scrollTop : 0;
     
     // ブラウザ上の実際のカーソル位置（カスタムカーソルの表示位置）
     // rect.widthがスケール適用後の幅なので、実際のスケール値を算出
-    // getBoundingClientRectはトランスフォーム適用後の値を返すため、
-    // キャンバスの元の寸法とスケール後の寸法の比率を使用する
     const actualScale = rect.width / canvas.width;
     
-    // マウス座標（ブラウザ座標系）
+    // マウス座標（ブラウザ座標系）- スクロール位置は考慮しない（getBoundingClientRectは既にスクロール位置を考慮済み）
     cursorX = clientX - rect.left;
     cursorY = clientY - rect.top;
     
     // キャンバス座標系に変換（描画用）
     canvasX = Math.floor(cursorX / actualScale);
     canvasY = Math.floor(cursorY / actualScale);
+    
+    // デバッグログ
+    console.log('マウス位置計算:', { 
+      clientX, clientY, 
+      rectLeft: rect.left, rectTop: rect.top,
+      cursorX, cursorY, 
+      canvasX, canvasY, 
+      scale, actualScale,
+      scrollLeft, scrollTop
+    });
     
     return { x: canvasX, y: canvasY };
   }
@@ -413,17 +432,20 @@
     justify-content: center;
     align-items: center;
     z-index: 1000;
+    overflow: hidden;
   }
   
   .modal-content {
-    width: 90%;
-    height: 90%;
-    max-width: 1200px;
-    max-height: 800px;
+    width: 95%;
+    height: 95%;
+    max-width: 1600px; /* より大きな最大幅 */
+    max-height: 900px; /* より大きな最大高さ */
     background-color: white;
     border-radius: 0.5rem;
     overflow: hidden;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
   }
   
   .editor-container {
@@ -431,6 +453,7 @@
     flex-direction: column;
     height: 100%;
     background-color: #f0f0f0;
+    overflow: hidden;
   }
   
   .toolbar {
@@ -440,6 +463,8 @@
     padding: 0.75rem;
     background-color: #e0e0e0;
     border-bottom: 1px solid #ccc;
+    flex-shrink: 0;
+    align-items: center;
   }
   
   .tool-group {
@@ -521,13 +546,18 @@
     overflow: auto;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     background-color: #d1d5db;
-    padding: 1rem;
+    padding: 2rem;
+    min-height: 0;
   }
   
   .canvas-wrapper {
     position: relative;
+    margin: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
   
   canvas {
@@ -535,6 +565,7 @@
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     cursor: none; /* 標準カーソルを非表示 */
     transform-origin: top left; /* トランスフォームの基点を明示的に指定 */
+    display: block;
   }
   
   .custom-cursor {
@@ -547,13 +578,35 @@
   }
   
   @media (max-width: 768px) {
+    .modal-content {
+      width: 100%;
+      height: 100%;
+      border-radius: 0;
+    }
+    
     .toolbar {
       flex-direction: column;
+      align-items: stretch;
+      padding: 0.5rem;
+      gap: 0.5rem;
+    }
+    
+    .history-controls {
+      margin-left: 0;
+      margin-right: 0;
+      justify-content: center;
+      margin-top: 0.5rem;
     }
     
     .actions {
       margin-left: 0;
       margin-top: 0.5rem;
+      justify-content: space-between;
+      width: 100%;
+    }
+    
+    .canvas-container {
+      padding: 0.5rem;
     }
   }
 </style> 
